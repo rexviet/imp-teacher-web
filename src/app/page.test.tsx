@@ -1,101 +1,78 @@
 import '@testing-library/jest-dom';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import HomePage from './page';
-import { useAuth } from '@/providers/AuthProvider';
-import { signOut } from 'firebase/auth';
+import { useTeacherGuard } from '@/hooks/useTeacherGuard';
 
-const replaceMock = jest.fn();
+jest.mock('lucide-react', () => {
+  const MockIcon = () => null;
+  return new Proxy(
+    {},
+    {
+      get: () => MockIcon,
+    },
+  );
+});
 
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: jest.fn(),
+jest.mock('@/hooks/useTeacherGuard', () => ({
+  useTeacherGuard: jest.fn(),
 }));
 
-jest.mock('@/lib/firebase/config', () => ({
-  auth: {},
-}));
-
-jest.mock('firebase/auth', () => ({
-  signOut: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(() => ({ replace: replaceMock })),
+jest.mock('@/components/teacher-shell', () => ({
+  TeacherShell: ({
+    title,
+    children,
+  }: {
+    title: string;
+    children: ReactNode;
+  }) => (
+    <div>
+      <h1>{title}</h1>
+      {children}
+    </div>
+  ),
 }));
 
 describe('Teacher HomePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.NEXT_PUBLIC_API_URL = 'http://localhost:5000';
   });
 
-  it('redirects to /login when unauthenticated', async () => {
-    (useAuth as jest.Mock).mockReturnValue({
+  it('shows loading state while teacher guard is loading', () => {
+    (useTeacherGuard as jest.Mock).mockReturnValue({
       user: null,
-      token: null,
-      loading: false,
+      loading: true,
+      syncError: null,
     });
 
     render(<HomePage />);
-
-    await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith('/login');
-    });
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
-  it('renders teacher profile after successful TEACHER sync', async () => {
-    (useAuth as jest.Mock).mockReturnValue({
+  it('renders dashboard and review list', () => {
+    (useTeacherGuard as jest.Mock).mockReturnValue({
       user: { displayName: 'Teacher A', email: 'teacher@example.com' },
-      token: 'token-1',
       loading: false,
+      syncError: null,
     });
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 't-1',
-        name: 'Teacher A',
-        email: 'teacher@example.com',
-        role: 'TEACHER',
-        creditBalance: 100,
-      }),
-    }) as jest.Mock;
 
     render(<HomePage />);
 
-    expect(screen.getByText('Teacher Dashboard')).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText('Role: TEACHER')).toBeInTheDocument();
-      expect(screen.getByText('Credits: 100')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Welcome back, Teacher')).toBeInTheDocument();
+    expect(screen.getByText('Pending Submissions')).toBeInTheDocument();
+    expect(screen.getByText('Alexander Sterling')).toBeInTheDocument();
   });
 
-  it('signs out and redirects when backend returns non-teacher role', async () => {
-    (useAuth as jest.Mock).mockReturnValue({
-      user: { displayName: 'Student A', email: 'student@example.com' },
-      token: 'token-2',
+  it('renders sync error banner', () => {
+    (useTeacherGuard as jest.Mock).mockReturnValue({
+      user: { displayName: 'Teacher A', email: 'teacher@example.com' },
       loading: false,
+      syncError: 'Only TEACHER accounts can access teacher portal',
     });
-
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'u-1',
-        name: 'Student A',
-        email: 'student@example.com',
-        role: 'STUDENT',
-        creditBalance: 0,
-      }),
-    }) as jest.Mock;
 
     render(<HomePage />);
-
-    await waitFor(() => {
-      expect(signOut).toHaveBeenCalled();
-      expect(replaceMock).toHaveBeenCalledWith('/login');
-      expect(
-        screen.getByText('Only TEACHER accounts can access teacher portal'),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.getByText('Only TEACHER accounts can access teacher portal'),
+    ).toBeInTheDocument();
   });
 });
