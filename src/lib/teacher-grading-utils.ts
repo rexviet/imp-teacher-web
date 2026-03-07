@@ -43,7 +43,16 @@ export function getWritingResponseText(detail: TeacherGradingDetail) {
     return '';
   }
 
-  for (const value of Object.values(answers)) {
+  const writingQuestionIds = new Set(
+    detail.attempt.test.sections
+      .filter((section) => section.type === 'WRITING')
+      .flatMap((section) => section.questions.map((question) => question.id)),
+  );
+
+  for (const [questionId, value] of Object.entries(answers)) {
+    if (!writingQuestionIds.has(questionId)) {
+      continue;
+    }
     if (typeof value === 'string' && value.trim().length > 0) {
       return value;
     }

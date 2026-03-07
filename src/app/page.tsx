@@ -23,6 +23,9 @@ import { useEffect, useMemo, useState } from "react";
 type ReviewType = "WRITING" | "SPEAKING";
 
 function resolveReviewType(item: TeacherGradingListItem): ReviewType {
+  if (item.targetSectionType === "WRITING" || item.targetSectionType === "SPEAKING") {
+    return item.targetSectionType;
+  }
   if (item.attempt.test.sectionTypes.includes("WRITING")) {
     return "WRITING";
   }

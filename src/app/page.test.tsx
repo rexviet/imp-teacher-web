@@ -83,6 +83,34 @@ describe('Teacher HomePage', () => {
     });
   });
 
+  it('uses explicit targetSectionType from API response for route labeling', async () => {
+    (useTeacherGuard as jest.Mock).mockReturnValue({
+      user: { displayName: 'Teacher A', email: 'teacher@example.com' },
+      token: 'token-1',
+      profile: { creditBalance: 150 },
+      loading: false,
+      syncError: null,
+    });
+    (getTeacherGradingRequests as jest.Mock).mockResolvedValue([
+      {
+        id: 'gr-2',
+        status: 'PENDING',
+        targetSectionType: 'SPEAKING',
+        createdAt: new Date().toISOString(),
+        attempt: {
+          candidate: { name: 'Candidate Two', email: 'c2@example.com' },
+          test: { sectionTypes: ['WRITING', 'SPEAKING'] },
+        },
+      },
+    ]);
+
+    render(<HomePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Speaking Mock')).toBeInTheDocument();
+    });
+  });
+
   it('renders sync error banner', () => {
     (useTeacherGuard as jest.Mock).mockReturnValue({
       user: { displayName: 'Teacher A', email: 'teacher@example.com' },

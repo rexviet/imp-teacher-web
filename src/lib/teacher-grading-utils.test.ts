@@ -6,7 +6,10 @@ import {
   normalizeRubricScores,
 } from './teacher-grading-utils';
 
-function mockDetail(answers: Record<string, unknown> | null): TeacherGradingDetail {
+function mockDetail(
+  answers: Record<string, unknown> | null,
+  sections: TeacherGradingDetail['attempt']['test']['sections'] = [],
+): TeacherGradingDetail {
   return {
     id: 'gr-1',
     status: 'PENDING',
@@ -18,7 +21,7 @@ function mockDetail(answers: Record<string, unknown> | null): TeacherGradingDeta
       test: {
         id: 't-1',
         title: 'Mock test',
-        sections: [],
+        sections,
       },
     },
   };
@@ -41,7 +44,23 @@ describe('teacher-grading-utils', () => {
   });
 
   it('returns first non-empty writing response from answers payload', () => {
-    const detail = mockDetail({ q1: '', q2: 'Essay text', q3: 'Another one' });
+    const detail = mockDetail(
+      { q1: 'Listening answer', q2: 'Essay text', q3: 'Another one' },
+      [
+        {
+          id: 's-reading',
+          type: 'READING',
+          order: 1,
+          questions: [{ id: 'q1', order: 1, content: {} }],
+        },
+        {
+          id: 's-writing',
+          type: 'WRITING',
+          order: 2,
+          questions: [{ id: 'q2', order: 1, content: {} }],
+        },
+      ],
+    );
 
     expect(getWritingResponseText(detail)).toBe('Essay text');
   });
