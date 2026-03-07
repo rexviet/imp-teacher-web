@@ -83,9 +83,15 @@ describe('WritingFeedbackPage', () => {
       expect(saveTeacherGradingDraft).toHaveBeenCalledWith(
         'token-1',
         'gr-1',
-        expect.objectContaining({
+        {
           feedback: 'Initial feedback',
-        }),
+          rubric: {
+            task: 7,
+            cohesion: 7,
+            lexical: 6.5,
+            grammar: 7,
+          },
+        },
       );
     });
 

@@ -91,9 +91,16 @@ describe('SpeakingFeedbackPage', () => {
       expect(submitTeacherGrading).toHaveBeenCalledWith(
         'token-2',
         'gr-2',
-        expect.objectContaining({
+        {
           feedback: 'Initial speaking feedback',
-        }),
+          rubric: {
+            fluency: 7,
+            lexical: 6.5,
+            grammar: 7,
+            pronunciation: 6.5,
+          },
+          finalScore: 7,
+        },
       );
     });
   });
