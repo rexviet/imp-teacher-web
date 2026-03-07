@@ -15,7 +15,7 @@ export interface TeacherUserProfile {
 }
 
 export interface TeacherGradingListItem {
-  targetSectionType?: 'WRITING' | 'SPEAKING';
+  targetSectionType: 'WRITING' | 'SPEAKING';
   id: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
   createdAt: string;
