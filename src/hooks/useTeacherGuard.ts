@@ -1,33 +1,18 @@
 "use client";
 
 import { auth } from "@/lib/firebase/config";
+import { registerTeacher, type TeacherUserProfile } from "@/lib/teacher-api";
 import { useAuth } from "@/providers/AuthProvider";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export interface TeacherProfile {
-  id: string;
-  name: string | null;
-  email: string;
-  role: "TEACHER" | "STUDENT" | "ADMIN";
-  creditBalance: number;
-  teacherProfile?: {
-    id: string;
-    headline?: string | null;
-    bio?: string | null;
-    creditRate?: number | null;
-  } | null;
-}
-
 export function useTeacherGuard() {
   const { user, token, loading } = useAuth();
   const router = useRouter();
-  const [profile, setProfile] = useState<TeacherProfile | null>(null);
+  const [profile, setProfile] = useState<TeacherUserProfile | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -40,34 +25,15 @@ export function useTeacherGuard() {
       return;
     }
 
-    if (!apiUrl) {
-      setSyncError("NEXT_PUBLIC_API_URL is missing");
-      return;
-    }
-
     const syncTeacherProfile = async () => {
       setSyncing(true);
       setSyncError(null);
 
       try {
-        const registerResponse = await fetch(`${apiUrl}/api/v1/users/register`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            role: "TEACHER",
-            name: user.displayName,
-          }),
+        const profileData = await registerTeacher(token, {
+          role: "TEACHER",
+          name: user.displayName,
         });
-
-        if (!registerResponse.ok) {
-          const errorMessage = await registerResponse.text();
-          throw new Error(errorMessage || "Failed to sync teacher profile");
-        }
-
-        const profileData: TeacherProfile = await registerResponse.json();
 
         if (profileData.role !== "TEACHER") {
           await signOut(auth);
@@ -89,10 +55,11 @@ export function useTeacherGuard() {
       setSyncError("Unexpected error while syncing teacher profile");
       setSyncing(false);
     });
-  }, [apiUrl, router, token, user]);
+  }, [router, token, user]);
 
   return {
     user,
+    token,
     profile,
     loading,
     syncing,

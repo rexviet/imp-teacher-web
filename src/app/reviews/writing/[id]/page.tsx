@@ -1,7 +1,17 @@
 "use client";
 
 import { useTeacherGuard } from "@/hooks/useTeacherGuard";
-import { getReviewById } from "@/lib/teacher-portal-data";
+import {
+  getTeacherGradingDetail,
+  saveTeacherGradingDraft,
+  submitTeacherGrading,
+  type TeacherGradingDetail,
+} from "@/lib/teacher-api";
+import {
+  computeAverageBand,
+  getWritingResponseText,
+  normalizeRubricScores,
+} from "@/lib/teacher-grading-utils";
 import {
   Bold,
   Headphones,
@@ -9,13 +19,14 @@ import {
   Link2,
   List,
   ListOrdered,
+  Loader2,
   Send,
   Settings,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function buildEssayLines(text: string) {
   const blocks = text
@@ -29,26 +40,94 @@ function buildEssayLines(text: string) {
   }));
 }
 
-export default function WritingFeedbackPage() {
-  const { loading, user } = useTeacherGuard();
-  const params = useParams<{ id: string }>();
-  const review = getReviewById(params.id);
-  const essayLines = useMemo(
-    () => buildEssayLines(review?.responseText || ""),
-    [review?.responseText],
-  );
+const BAND_OPTIONS = ["6.0", "6.5", "7.0", "7.5", "8.0", "8.5", "9.0"];
 
+export default function WritingFeedbackPage() {
+  const { loading, user, token } = useTeacherGuard();
+  const params = useParams<{ id: string }>();
+
+  const [feedback, setFeedback] = useState("");
   const [scores, setScores] = useState({
     task: "7.0",
-    cohesion: "6.5",
+    cohesion: "7.0",
     lexical: "7.0",
-    grammar: "7.5",
+    grammar: "7.0",
   });
-  const [feedback, setFeedback] = useState(
-    "Great effort on this essay, Alexander. Your arguments are well-structured and you've used a good range of transition words.\n\nStrengths:\n- Clear introduction with a strong thesis statement.\n- Effective use of examples regarding instant messaging.\n- Good range of complex grammatical structures in the third paragraph.\n\nAreas for Improvement:\nTry to avoid repeating the word 'communication' too frequently.",
+
+  const [loadingDetail, setLoadingDetail] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [detail, setDetail] = useState<TeacherGradingDetail | null>(null);
+
+  useEffect(() => {
+    if (!token || !params.id) {
+      return;
+    }
+
+    let mounted = true;
+
+    const run = async () => {
+      setLoadingDetail(true);
+      setError(null);
+      try {
+        const data = await getTeacherGradingDetail(token, params.id);
+        if (mounted) {
+          setDetail(data);
+          const rubric = normalizeRubricScores(data.rubric, [
+            "task",
+            "cohesion",
+            "lexical",
+            "grammar",
+          ]);
+          setScores({
+            task: String(rubric.task ?? 7.0),
+            cohesion: String(rubric.cohesion ?? 7.0),
+            lexical: String(rubric.lexical ?? 7.0),
+            grammar: String(rubric.grammar ?? 7.0),
+          });
+          setFeedback(data.feedback || "");
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load request");
+        }
+      } finally {
+        if (mounted) {
+          setLoadingDetail(false);
+        }
+      }
+    };
+
+    run().catch(() => {
+      if (mounted) {
+        setError("Unexpected error while loading grading request");
+        setLoadingDetail(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [params.id, token]);
+
+  const essayLines = useMemo(
+    () => buildEssayLines(detail ? getWritingResponseText(detail) : ""),
+    [detail],
   );
 
-  if (loading || !user) {
+  const finalBand = useMemo(
+    () =>
+      computeAverageBand([
+        Number(scores.task),
+        Number(scores.cohesion),
+        Number(scores.lexical),
+        Number(scores.grammar),
+      ]),
+    [scores],
+  );
+
+  if (loading || !user || loadingDetail) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50">
         <p className="text-slate-600">Loading...</p>
@@ -56,11 +135,11 @@ export default function WritingFeedbackPage() {
     );
   }
 
-  if (!review || review.type !== "WRITING") {
+  if (error || !detail) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-slate-600">No writing review found for this id.</p>
+          <p className="text-slate-600">{error || "No writing review found for this id."}</p>
           <Link href="/" className="mt-3 inline-block text-teal-700 hover:underline">
             Back to dashboard
           </Link>
@@ -69,25 +148,88 @@ export default function WritingFeedbackPage() {
     );
   }
 
+  const onSaveDraft = async () => {
+    if (!token) {
+      setError("Missing auth token");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updated = await saveTeacherGradingDraft(token, params.id, {
+        feedback,
+        rubric: {
+          task: Number(scores.task),
+          cohesion: Number(scores.cohesion),
+          lexical: Number(scores.lexical),
+          grammar: Number(scores.grammar),
+        },
+      });
+      setDetail(updated);
+    } catch (draftError) {
+      setError(draftError instanceof Error ? draftError.message : "Failed to save draft");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSubmit = async () => {
+    if (!token) {
+      setError("Missing auth token");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const updated = await submitTeacherGrading(token, params.id, {
+        feedback,
+        rubric: {
+          task: Number(scores.task),
+          cohesion: Number(scores.cohesion),
+          lexical: Number(scores.lexical),
+          grammar: Number(scores.grammar),
+        },
+        finalScore: finalBand,
+      });
+      setDetail(updated);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to submit grading");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-700">
+      {error ? (
+        <div className="mx-6 mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-teal-700">
             <UserRound className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-800">{review.candidateName}</h1>
+            <h1 className="text-sm font-bold text-slate-800">
+              {detail.attempt.user.name || detail.attempt.user.email}
+            </h1>
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              Candidate ID: #{review.candidateId}
+              Submission: #{detail.id}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-5">
           <div className="text-right">
-            <p className="text-sm font-semibold text-teal-700">Task 2: Academic Essay</p>
-            <p className="text-xs text-slate-400">Time Taken: {review.duration}</p>
+            <p className="text-sm font-semibold text-teal-700">{detail.attempt.test.title}</p>
+            <p className="text-xs text-slate-400">Status: {detail.status}</p>
           </div>
           <div className="h-8 w-px bg-slate-200" />
           <button className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-teal-700">
@@ -111,13 +253,16 @@ export default function WritingFeedbackPage() {
                 Show Prompt
               </button>
               <span className="rounded bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">
-                284 Words
+                {essayLines.length > 0 ? `${essayLines.length} lines` : "No response"}
               </span>
             </div>
           </div>
 
           <div className="relative flex-1 overflow-y-auto p-10">
             <div className="mx-auto ml-10 max-w-2xl">
+              {essayLines.length === 0 ? (
+                <p className="text-sm text-slate-500">No writing answer found in this submission.</p>
+              ) : null}
               {essayLines.map((line) => (
                 <div key={line.line} className="relative mb-4 pl-0 leading-relaxed text-slate-700">
                   <span className="absolute -left-10 top-0 font-mono text-xs text-slate-300">
@@ -150,10 +295,9 @@ export default function WritingFeedbackPage() {
                     }
                     className="mt-1 w-full rounded-lg border-slate-200 py-2 text-sm"
                   >
-                    <option>6.0</option>
-                    <option>6.5</option>
-                    <option>7.0</option>
-                    <option>7.5</option>
+                    {BAND_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-500">
@@ -165,10 +309,9 @@ export default function WritingFeedbackPage() {
                     }
                     className="mt-1 w-full rounded-lg border-slate-200 py-2 text-sm"
                   >
-                    <option>6.0</option>
-                    <option>6.5</option>
-                    <option>7.0</option>
-                    <option>7.5</option>
+                    {BAND_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-500">
@@ -180,10 +323,9 @@ export default function WritingFeedbackPage() {
                     }
                     className="mt-1 w-full rounded-lg border-slate-200 py-2 text-sm"
                   >
-                    <option>6.0</option>
-                    <option>6.5</option>
-                    <option>7.0</option>
-                    <option>7.5</option>
+                    {BAND_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-500">
@@ -195,16 +337,15 @@ export default function WritingFeedbackPage() {
                     }
                     className="mt-1 w-full rounded-lg border-slate-200 py-2 text-sm"
                   >
-                    <option>6.0</option>
-                    <option>6.5</option>
-                    <option>7.0</option>
-                    <option>7.5</option>
+                    {BAND_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </label>
               </div>
               <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-5">
                 <span className="text-xs font-bold text-slate-400">ESTIMATED OVERALL</span>
-                <span className="font-mono text-2xl font-bold text-teal-700">7.0</span>
+                <span className="font-mono text-2xl font-bold text-teal-700">{finalBand.toFixed(1)}</span>
               </div>
             </div>
 
@@ -238,27 +379,26 @@ export default function WritingFeedbackPage() {
                 />
               </div>
             </div>
-
-            <div className="flex items-center gap-4 rounded-xl bg-teal-900 p-5 text-white">
-              <button className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-300 text-teal-900 hover:bg-teal-200">
-                <Headphones className="h-4 w-4" />
-              </button>
-              <div>
-                <h4 className="text-sm font-bold">Record Audio Feedback</h4>
-                <p className="text-xs text-teal-200">Add a personal touch to your grading</p>
-              </div>
-            </div>
           </div>
         </section>
       </main>
 
       <footer className="fixed inset-x-0 bottom-0 z-20 flex h-16 items-center justify-end gap-4 border-t border-slate-200 bg-white px-6">
-        <button className="px-6 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">
+        <button
+          className="inline-flex items-center gap-2 px-6 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 disabled:opacity-70"
+          onClick={onSaveDraft}
+          disabled={saving || submitting}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Save as Draft
         </button>
-        <button className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-6 py-2 text-sm font-bold text-white hover:bg-teal-800">
+        <button
+          className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-6 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-70"
+          onClick={onSubmit}
+          disabled={saving || submitting}
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           Submit Grade
-          <Send className="h-4 w-4" />
         </button>
       </footer>
     </div>
