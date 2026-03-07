@@ -1,6 +1,8 @@
 import {
   getTeacherGradingDetail,
   registerTeacher,
+  saveTeacherGradingDraft,
+  submitTeacherGrading,
   updateTeacherProfile,
 } from './teacher-api';
 
@@ -47,6 +49,60 @@ describe('teacher-api', () => {
       'http://localhost:5000/api/v1/teacher/grading-requests/gr-1',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer token-2' }),
+      }),
+    );
+  });
+
+  it('sends grading draft payload to draft endpoint', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'gr-1', status: 'IN_PROGRESS' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await saveTeacherGradingDraft('token-4', 'gr-1', {
+      feedback: 'Draft feedback',
+      rubric: { task: 7, cohesion: 7 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:5000/api/v1/teacher/grading-requests/gr-1/draft',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          feedback: 'Draft feedback',
+          rubric: { task: 7, cohesion: 7 },
+        }),
+        headers: expect.objectContaining({ Authorization: 'Bearer token-4' }),
+      }),
+    );
+  });
+
+  it('sends finalScore payload to submit endpoint', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ id: 'gr-1', status: 'COMPLETED', finalScore: 7.5 }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await submitTeacherGrading('token-5', 'gr-1', {
+      feedback: 'Final feedback',
+      rubric: { task: 7.5, cohesion: 7.5, lexical: 7, grammar: 7 },
+      finalScore: 7.5,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:5000/api/v1/teacher/grading-requests/gr-1/submit',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          feedback: 'Final feedback',
+          rubric: { task: 7.5, cohesion: 7.5, lexical: 7, grammar: 7 },
+          finalScore: 7.5,
+        }),
+        headers: expect.objectContaining({ Authorization: 'Bearer token-5' }),
       }),
     );
   });
