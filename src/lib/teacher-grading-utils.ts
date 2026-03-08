@@ -38,13 +38,19 @@ export function computeAverageBand(scores: number[]) {
 }
 
 export function getWritingResponseText(detail: TeacherGradingDetail) {
-  const answers = detail.attempt.answers;
+  const attempt = detail?.attempt;
+  if (!attempt || typeof attempt !== 'object') {
+    return '';
+  }
+
+  const answers = attempt.answers;
   if (!answers || typeof answers !== 'object') {
     return '';
   }
 
+  const sections = Array.isArray(attempt.test?.sections) ? attempt.test.sections : [];
   const writingQuestionIds = new Set(
-    detail.attempt.test.sections
+    sections
       .filter((section) => section.type === 'WRITING')
       .flatMap((section) => section.questions.map((question) => question.id)),
   );
@@ -62,7 +68,12 @@ export function getWritingResponseText(detail: TeacherGradingDetail) {
 }
 
 export function getSpeakingTranscript(detail: TeacherGradingDetail) {
-  const answers = detail.attempt.answers;
+  const attempt = detail?.attempt;
+  if (!attempt || typeof attempt !== 'object') {
+    return [];
+  }
+
+  const answers = attempt.answers;
   if (!answers || typeof answers !== 'object') {
     return [];
   }

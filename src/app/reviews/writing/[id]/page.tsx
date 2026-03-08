@@ -373,6 +373,7 @@ export default function WritingFeedbackPage() {
                   Detailed Feedback
                 </label>
                 <textarea
+                  aria-label="Detailed feedback"
                   value={feedback}
                   onChange={(event) => setFeedback(event.target.value)}
                   className="min-h-[260px] w-full resize-none border-none p-0 text-sm leading-relaxed text-slate-700 outline-none focus:ring-0"
@@ -393,6 +394,7 @@ export default function WritingFeedbackPage() {
           Save as Draft
         </button>
         <button
+          aria-label="Submit writing grade"
           className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-6 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-70"
           onClick={onSubmit}
           disabled={saving || submitting}

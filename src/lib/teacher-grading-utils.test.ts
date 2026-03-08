@@ -83,4 +83,29 @@ describe('teacher-grading-utils', () => {
       { role: 'STUDENT', content: 'Second answer' },
     ]);
   });
+
+  it('returns safe defaults when attempt payload is missing', () => {
+    const malformed = {
+      id: 'gr-malformed',
+      status: 'PENDING',
+    } as unknown as TeacherGradingDetail;
+
+    expect(getWritingResponseText(malformed)).toBe('');
+    expect(getSpeakingTranscript(malformed)).toEqual([]);
+  });
+
+  it('returns empty writing response when test sections are missing', () => {
+    const malformed = {
+      id: 'gr-malformed-sections',
+      status: 'PENDING',
+      attempt: {
+        id: 'a-malformed',
+        answers: { q1: 'Essay text' },
+        createdAt: new Date().toISOString(),
+        user: { id: 'u-1', name: 'Student A', email: 'a@example.com' },
+      },
+    } as unknown as TeacherGradingDetail;
+
+    expect(getWritingResponseText(malformed)).toBe('');
+  });
 });
