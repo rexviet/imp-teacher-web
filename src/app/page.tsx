@@ -250,6 +250,7 @@ export default function HomePage() {
                   </div>
                   <Link
                     href={reviewHref(review.id, reviewType)}
+                    aria-label={`Start grading request ${review.id}`}
                     className="inline-flex items-center gap-1 rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
                   >
                     Start Grading
